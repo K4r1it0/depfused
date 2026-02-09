@@ -1,0 +1,22 @@
+{
+  "name": "swc-app",
+  "version": "1.0.0",
+  "description": "Test lab: SWC compiled app with internal package dependencies",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "swc src -d dist/transpiled --source-maps",
+    "build:bundle": "esbuild dist/transpiled/index.js --bundle --format=iife --global-name=SwcApp --sourcemap --outfile=dist/browser/bundle.js",
+    "build:all": "npm run build && npm run build:bundle"
+  },
+  "dependencies": {
+    "@xq9zk7823/api-client": "file:../packages/acmecorp-api-client",
+    "@xq9zk7823/auth-sdk": "file:../packages/acmecorp-auth-sdk",
+    "lodash": "^4.17.21",
+    "private-logger": "file:../packages/private-logger"
+  },
+  "devDependencies": {
+    "@swc/cli": "^0.1.65",
+    "@swc/core": "^1.3.100",
+    "esbuild": "^0.27.3"
+  }
+}

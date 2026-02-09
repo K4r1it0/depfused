@@ -1,0 +1,27 @@
+# Build artifacts
+/target/
+
+# Node
+node_modules/
+.parcel-cache/
+
+# Framework build caches
+.angular/
+.next/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# Scan results (generated)
+*.log

@@ -1,0 +1,22 @@
+{
+  "name": "rollup-library",
+  "version": "1.0.0",
+  "description": "Test lab: Rollup library build with internal package dependencies",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c"
+  },
+  "dependencies": {
+    "@xq9zk7823/design-system": "file:../packages/acmecorp-design-system",
+    "@xq9zk7823/i18n-utils": "file:../packages/acmecorp-i18n-utils",
+    "company-internal-utils": "file:../packages/company-internal-utils",
+    "lodash-es": "^4.17.21"
+  },
+  "devDependencies": {
+    "rollup": "^4.9.0",
+    "@rollup/plugin-node-resolve": "^15.2.0",
+    "@rollup/plugin-commonjs": "^25.0.0"
+  }
+}

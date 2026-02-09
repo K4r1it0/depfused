@@ -1,0 +1,23 @@
+{
+  "name": "esbuild-app-lab",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@xq9zk7823/auth-sdk": "file:../packages/acmecorp-auth-sdk",
+    "@xq9zk7823/config-service": "file:../packages/acmecorp-config-service",
+    "private-logger": "file:../packages/private-logger",
+    "enterprise-sdk": "file:../packages/enterprise-sdk",
+    "lodash": "^4.17.21",
+    "axios": "^1.7.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "scripts": {
+    "build:esm": "esbuild src/index.js --bundle --format=esm --outfile=dist/esm/bundle.js --sourcemap",
+    "build:cjs": "esbuild src/index.js --bundle --format=cjs --outfile=dist/cjs/bundle.js --sourcemap",
+    "build:min": "esbuild src/index.js --bundle --minify --outfile=dist/min/bundle.js --sourcemap",
+    "build:iife": "esbuild src/index.js --bundle --format=iife --global-name=App --sourcemap --outfile=dist/browser/bundle.js",
+    "build": "npm run build:esm && npm run build:cjs && npm run build:min && npm run build:iife"
+  }
+}

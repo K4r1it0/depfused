@@ -1,0 +1,26 @@
+{
+  "name": "vite-vue-lab",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.4.0",
+    "vue-router": "^4.3.0",
+    "lodash-es": "^4.17.21",
+    "axios": "^1.7.0",
+    "@xq9zk7823/design-system": "file:../packages/acmecorp-design-system",
+    "@xq9zk7823/api-client": "file:../packages/acmecorp-api-client",
+    "@xq9zk7823/i18n-utils": "file:../packages/acmecorp-i18n-utils",
+    "@xq9zk7823/config-service": "file:../packages/acmecorp-config-service",
+    "company-internal-utils": "file:../packages/company-internal-utils"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "@vitejs/plugin-vue": "^5.1.0"
+  }
+}

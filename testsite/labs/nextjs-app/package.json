@@ -1,0 +1,24 @@
+{
+  "name": "nextjs-depfused-testlab",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.2.21",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "lodash": "^4.17.21",
+    "axios": "^1.7.0",
+    "@xq9zk7823/design-system": "file:../packages/acmecorp-design-system",
+    "@xq9zk7823/auth-sdk": "file:../packages/acmecorp-auth-sdk",
+    "@xq9zk7823/analytics-tracker": "file:../packages/acmecorp-analytics-tracker",
+    "@xq9zk7823/payment-gateway": "file:../packages/acmecorp-payment-gateway",
+    "company-internal-utils": "file:../packages/company-internal-utils",
+    "private-logger": "file:../packages/private-logger",
+    "enterprise-sdk": "file:../packages/enterprise-sdk"
+  }
+}

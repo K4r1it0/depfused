@@ -1,0 +1,2 @@
+"use strict";(self.webpackChunkwebpack5_react_testlab=self.webpackChunkwebpack5_react_testlab||[]).push([[638],{638(t,e){var a=function(t,e){console.log("[analytics]",t,e)},n=function(t){console.log("[analytics] pageview:",t)},c=function(t){return{ready:!0,trackEvent:a,trackPageView:n}},i=function(t){return{ready:!0}},r="1.0.0";e.trackEvent=a,e.trackPageView=n,e.initAnalytics=c,e.init=i,e.VERSION=r,e.default={trackEvent:a,trackPageView:n,initAnalytics:c,init:i,VERSION:r}}}]);
+//# sourceMappingURL=638.d098419b.chunk.js.map

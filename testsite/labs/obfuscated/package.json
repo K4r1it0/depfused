@@ -1,0 +1,18 @@
+{
+  "name": "obfuscated-lab",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "obfuscate": "node obfuscate.js"
+  },
+  "dependencies": {
+    "@xq9zk7823/payment-gateway": "file:../packages/acmecorp-payment-gateway",
+    "@xq9zk7823/auth-sdk": "file:../packages/acmecorp-auth-sdk",
+    "private-logger": "file:../packages/private-logger"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "javascript-obfuscator": "^4.1.0"
+  }
+}

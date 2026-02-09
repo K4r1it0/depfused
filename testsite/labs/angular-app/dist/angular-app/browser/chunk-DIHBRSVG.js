@@ -1,0 +1,2 @@
+import{c as i}from"./chunk-TTX7WDLH.js";var c=i(t=>{function u(n){return"<div data-auth=provider>"+(n&&n.children||"")+"</div>"}function r(){return"<form class=acme-login><input type=email placeholder=Email /><button type=submit>Login</button></form>"}function e(){return{user:null,isAuthenticated:!1,login:function(){},logout:function(){}}}var o=function(n){return{ready:!0}},a="1.0.0";t.AuthProvider=u;t.LoginForm=r;t.useAuth=e;t.init=o;t.VERSION=a});export default c();
+//# sourceMappingURL=chunk-DIHBRSVG.js.map

@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/styles.css"],
+  "sourcesContent": ["/* Global styles */\nbody { font-family: sans-serif; margin: 0; padding: 20px; }\n"],
+  "mappings": "AACA,KAAO,YAAa,WADpB,OACwC,EADxC,QACoD,IAAM",
+  "names": []
+}
