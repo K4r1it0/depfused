@@ -1,4 +1,4 @@
-# depfused
+# depfused v0.1.0  
 
 High-performance dependency confusion scanner. Detects vulnerable private packages in production websites by capturing JavaScript bundles via headless browser, extracting package names through AST parsing and source map analysis, and checking them against the npm registry.
 
