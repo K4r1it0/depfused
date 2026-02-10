@@ -50,11 +50,17 @@ impl Scanner {
         let sourcemap_prober =
             SourceMapProber::new(config.timeout, &http_config.user_agent)?;
 
-        // Resolve Chrome executable: explicit flag > managed install > system default
-        let chrome_exe = config
-            .chrome_path
-            .clone()
-            .or_else(crate::browser::resolve_chrome_executable);
+        // Resolve Chrome executable: explicit flag > managed install > auto-download
+        let chrome_exe = match config.chrome_path.clone().or_else(crate::browser::resolve_chrome_executable) {
+            Some(path) => Some(path),
+            None => {
+                // No Chrome found anywhere — download now so parallel host groups don't race
+                tracing::warn!(
+                    "Chrome not found, downloading Chromium automatically... (run `depfused setup` to pre-install)"
+                );
+                Some(crate::browser::download_chrome(false).await?)
+            }
+        };
 
         let browser_capture = BrowserCapture::new(config.timeout, true)
             .with_fast_mode(config.fast)
