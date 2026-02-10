@@ -88,9 +88,13 @@ impl BrowserCapture {
         &self,
         temp_dir: &std::path::Path,
     ) -> Result<(Browser, impl futures::Stream<Item = std::result::Result<(), chromiumoxide::error::CdpError>>)> {
-        let config = self.build_browser_config(temp_dir, self.chrome_executable.as_deref())?;
+        // Try building config and launching — config build can fail if no Chrome is found
+        let launch_result = match self.build_browser_config(temp_dir, self.chrome_executable.as_deref()) {
+            Ok(config) => Browser::launch(config).await,
+            Err(e) => Err(chromiumoxide::error::CdpError::msg(e.to_string())),
+        };
 
-        match Browser::launch(config).await {
+        match launch_result {
             Ok(pair) => Ok(pair),
             Err(e) => {
                 // If we already had an explicit chrome path, don't try auto-download
