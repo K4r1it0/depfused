@@ -270,7 +270,26 @@ impl BrowserCapture {
                 let result = match tokio::time::timeout(page_timeout, self.capture_js_files(browser, url)).await {
                     Ok(r) => r,
                     Err(_) => {
-                        warn!("Hard timeout after {}s for {}, skipping", page_timeout.as_secs(), url);
+                        warn!("Hard timeout after {}s for {}, killing browser and restarting", page_timeout.as_secs(), url);
+                        // Kill the hung browser — Chrome may be spinning CPU
+                        current_browser.take();
+                        current_handler_task.abort();
+                        match self.launch_browser(&temp_dir).await {
+                            Ok((new_browser, mut new_handler)) => {
+                                current_handler_task = tokio::spawn(async move {
+                                    while let Some(event) = new_handler.next().await {
+                                        if event.is_err() {
+                                            break;
+                                        }
+                                    }
+                                });
+                                current_browser = Some(new_browser);
+                                pages_used = 0;
+                            }
+                            Err(e) => {
+                                warn!("Browser restart after timeout failed: {}", e);
+                            }
+                        }
                         Ok(Vec::new())
                     }
                 };
