@@ -155,8 +155,15 @@ impl BrowserCapture {
             }
         });
 
-        // Capture JS files
-        let result = self.capture_js_files(&browser, url).await;
+        // Capture JS files (with hard timeout to prevent hangs)
+        let page_timeout = Duration::from_secs(self.timeout_secs + 15);
+        let result = match tokio::time::timeout(page_timeout, self.capture_js_files(&browser, url)).await {
+            Ok(r) => r,
+            Err(_) => {
+                warn!("Hard timeout after {}s for {}, skipping", page_timeout.as_secs(), url);
+                Ok(Vec::new())
+            }
+        };
 
         // Clean up browser
         drop(browser);
@@ -259,7 +266,14 @@ impl BrowserCapture {
             }
 
             if let Some(ref browser) = current_browser {
-                let result = self.capture_js_files(browser, url).await;
+                let page_timeout = Duration::from_secs(self.timeout_secs + 15);
+                let result = match tokio::time::timeout(page_timeout, self.capture_js_files(browser, url)).await {
+                    Ok(r) => r,
+                    Err(_) => {
+                        warn!("Hard timeout after {}s for {}, skipping", page_timeout.as_secs(), url);
+                        Ok(Vec::new())
+                    }
+                };
                 results.push((url.to_string(), result));
                 pages_used += 1;
             } else {
