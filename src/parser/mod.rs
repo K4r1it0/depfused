@@ -237,18 +237,15 @@ pub fn is_likely_false_positive(name: &str) -> bool {
         return true;
     }
 
-    // Hex hashes from obfuscated code (e.g., cce448c, 806d289)
-    // 6-8 character strings that are only hex digits
-    if name.len() >= 6 && name.len() <= 8 {
-        if name.chars().all(|c| c.is_ascii_hexdigit()) {
-            // Additional check: if it's all letters or all numbers, might be legitimate
-            let all_letters = name.chars().all(|c| c.is_ascii_alphabetic());
-            let all_numbers = name.chars().all(|c| c.is_ascii_digit());
+    // Hex hashes from obfuscated code (e.g., cce448c, 806d289, 02cd8bbf69bb5ae8)
+    // Any string 6+ chars that is only hex digits with mixed letters and numbers
+    if name.len() >= 6 && name.chars().all(|c| c.is_ascii_hexdigit()) {
+        let has_letter = name.chars().any(|c| c.is_ascii_alphabetic());
+        let has_digit = name.chars().any(|c| c.is_ascii_digit());
 
-            // If mixed hex (has both letters and numbers), likely a hash
-            if !all_letters && !all_numbers {
-                return true;
-            }
+        // If mixed hex (has both letters and numbers), likely a hash
+        if has_letter && has_digit {
+            return true;
         }
     }
 
@@ -344,6 +341,28 @@ pub fn is_likely_false_positive(name: &str) -> bool {
         "visible", "hidden", "selected", "focused", "checked", "valid",
     ];
     if more_generic_names.contains(&name_lower.as_str()) {
+        return true;
+    }
+
+    // DOM event names — extracted by deobfuscator from event handlers, never real packages
+    let dom_events = [
+        "mousedown", "mouseup", "mousemove", "mouseover", "mouseout", "mouseenter",
+        "mouseleave", "touchstart", "touchend", "touchmove", "touchcancel",
+        "keydown", "keyup", "keypress", "beforeunload", "visibilitychange",
+        "readystatechange", "onmessage", "ontouchend", "ontouchstart",
+        "pointerdown", "pointerup", "pointermove", "contextmenu",
+        "focusin", "focusout", "compositionstart", "compositionend",
+    ];
+    if dom_events.contains(&name_lower.as_str()) {
+        return true;
+    }
+
+    // Referrer policy values and other web API constants
+    let web_constants = [
+        "unsafe-url", "no-referrer", "same-origin", "strict-origin",
+        "evenodd", "alphabetic", "experimental-webgl",
+    ];
+    if web_constants.contains(&name) {
         return true;
     }
 

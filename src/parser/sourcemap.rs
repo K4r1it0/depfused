@@ -78,6 +78,8 @@ impl SourceMapParser {
         }
         // Check for packages/ directory pattern (monorepo workspaces)
         // e.g., ../packages/private-logger/index.js, packages/@scope/utils/src/index.js
+        // NOTE: Low confidence because monorepo workspace names rarely match their
+        // published npm name (they almost always have a scope like @company/pkg).
         else if let Some(idx) = path.find("packages/") {
             let after_packages = &path[idx + "packages/".len()..];
             if let Some(pkg_name) = self.extract_package_from_path_segment(after_packages) {
@@ -86,7 +88,7 @@ impl SourceMapParser {
                         name: pkg_name,
                         extraction_method: ExtractionMethod::SourceMap,
                         source_url: source_url.to_string(),
-                        confidence: Confidence::Medium,
+                        confidence: Confidence::Low,
                     });
                 }
             }
