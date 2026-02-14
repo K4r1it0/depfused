@@ -175,8 +175,48 @@ pub fn is_likely_false_positive(name: &str) -> bool {
         }
     }
 
-    // Skip scoped packages (they're more reliable)
+    // Scoped package false positive checks (before the general early return)
     if name.starts_with('@') {
+        if let Some(pkg_part) = name.split('/').nth(1) {
+            // FP: Version number as package name (from CDN URLs like @scope/1.2.3/dist/...)
+            // Pattern: @scope/X.Y.Z or @scope/X.Y where X,Y,Z are digits
+            if pkg_part.contains('.') && pkg_part.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                return true;
+            }
+
+            // FP: Blog post / article URL slugs (Medium, etc.)
+            // Pattern: @celoorg/2025-year-in-review-while-crypto-talked-celo-delivered-1f2472952abf
+            // Real npm package names are almost never longer than 50 chars
+            if pkg_part.len() > 50 {
+                return true;
+            }
+
+            // FP: Blog slugs starting with a year (e.g. "2025-year-in-review...")
+            if pkg_part.len() > 20
+                && pkg_part.starts_with(|c: char| c.is_ascii_digit())
+                && pkg_part.contains('-')
+            {
+                // Count hyphens — blog slugs have many, package names usually <5
+                let hyphen_count = pkg_part.chars().filter(|&c| c == '-').count();
+                if hyphen_count > 5 {
+                    return true;
+                }
+            }
+
+            // FP: Slug ending with hex hash (Medium article ID)
+            // Pattern: @scope/some-title-1f2472952abf
+            if pkg_part.len() > 30 {
+                if let Some(last_part) = pkg_part.rsplit('-').next() {
+                    if last_part.len() >= 10
+                        && last_part.chars().all(|c| c.is_ascii_hexdigit())
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Skip remaining scoped packages (they're more reliable)
         return false;
     }
 

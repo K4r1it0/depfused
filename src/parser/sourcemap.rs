@@ -135,6 +135,17 @@ impl SourceMapParser {
             if let Ok(re) = regex::Regex::new(pattern) {
                 for caps in re.captures_iter(content) {
                     if let Some(name_match) = caps.get(1) {
+                        // FP: Skip commented-out require/import in source content
+                        // e.g. "//const x = require('@scope/pkg')" in sourcesContent
+                        let match_start = caps.get(0).unwrap().start();
+                        let before = &content[..match_start];
+                        // Find the start of the current line
+                        let line_start = before.rfind('\n').map(|p| p + 1).unwrap_or(0);
+                        let line_prefix = content[line_start..match_start].trim();
+                        if line_prefix.starts_with("//") || line_prefix.starts_with('*') {
+                            continue;
+                        }
+
                         let raw_name = name_match.as_str();
                         if let Some(pkg_name) = normalize_package_name(raw_name) {
                             if !filters::should_filter_package(&pkg_name, None, Some(source_url)) {

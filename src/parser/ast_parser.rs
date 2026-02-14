@@ -99,6 +99,34 @@ impl AstParser {
 
         for cap in package_pattern.captures_iter(&comment_text) {
             if let (Some(scope), Some(name)) = (cap.get(1), cap.get(2)) {
+                let match_start = cap.get(0).unwrap().start();
+                let match_end = cap.get(0).unwrap().end();
+
+                // Get the line containing this match for context checks
+                let line_start = comment_text[..match_start].rfind('\n').map(|p| p + 1).unwrap_or(0);
+                let line_end = comment_text[match_end..].find('\n').map(|p| match_end + p).unwrap_or(comment_text.len());
+                let same_line = &comment_text[line_start..line_end];
+
+                // FP: Skip @scope/package that appears on a line with a URL (CDN reference)
+                // Catches both:
+                //   - URLs before: https://cdn.com/npm/@scope/pkg/file.js
+                //   - URLs after:  "@scope/pkg":["https://cdn.com/file.js"]
+                //   - Extension maps: "@scope/pkg":"https://b.yzcdn.cn/..."
+                if same_line.contains("://") {
+                    continue;
+                }
+
+                // FP: Skip lines that look like CDN/extension mappings
+                // Pattern: "@scope/pkg":[ or "@scope/pkg":" (JSON-like key mapped to a URL)
+                let after_match = &comment_text[match_end..line_end];
+                let after_trimmed = after_match.trim_start();
+                if after_trimmed.starts_with("\":[")
+                    || after_trimmed.starts_with("\":{")
+                    || after_trimmed.starts_with("\":\"http")
+                {
+                    continue;
+                }
+
                 let full_name = format!("@{}/{}", scope.as_str(), name.as_str());
                 if let Some(normalized) = normalize_package_name(&full_name) {
                     packages.insert(Package {
