@@ -25,6 +25,31 @@ async fn main() -> ExitCode {
         .with_target(false)
         .init();
 
+    // Spawn signal handler to kill Chrome processes on SIGTERM/SIGINT.
+    // Without this, Chrome survives after depfused is killed and burns CPU forever.
+    tokio::spawn(async {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sigterm = signal(SignalKind::terminate()).expect("failed to register SIGTERM handler");
+            let mut sigint = signal(SignalKind::interrupt()).expect("failed to register SIGINT handler");
+
+            tokio::select! {
+                _ = sigterm.recv() => {},
+                _ = sigint.recv() => {},
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+
+        eprintln!("\nSignal received, killing Chrome processes...");
+        depfused::discovery::kill_all_chrome();
+        std::process::exit(130);
+    });
+
     match config.command.clone() {
         Commands::Scan(scan_config) => {
             if let Err(code) = run_scan(scan_config, &config).await {

@@ -13,14 +13,85 @@ use chromiumoxide::cdp::browser_protocol::network::{
 };
 use futures::StreamExt;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::LazyLock;
+use std::sync::Mutex as StdMutex;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 /// Counter for generating unique browser profile directories
 static BROWSER_INSTANCE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Global set of active Chrome temp directories.
+/// Used to find and kill orphaned Chrome processes on exit/signal.
+static CHROME_TEMP_DIRS: LazyLock<StdMutex<Vec<PathBuf>>> =
+    LazyLock::new(|| StdMutex::new(Vec::new()));
+
+fn register_temp_dir(dir: &Path) {
+    if let Ok(mut dirs) = CHROME_TEMP_DIRS.lock() {
+        dirs.push(dir.to_path_buf());
+    }
+}
+
+fn unregister_temp_dir(dir: &Path) {
+    if let Ok(mut dirs) = CHROME_TEMP_DIRS.lock() {
+        dirs.retain(|d| d != dir);
+    }
+}
+
+/// Kill all Chrome processes whose command line contains the given directory path.
+/// Uses pgrep to find PIDs and kill -9 to terminate them.
+fn kill_chrome_for_dir(dir: &Path) {
+    let dir_str = dir.display().to_string();
+
+    let output = match std::process::Command::new("pgrep")
+        .args(["-f", &dir_str])
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => return,
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut kill_args = vec!["-9".to_string()];
+    let mut found = false;
+
+    for line in stdout.lines() {
+        let pid = line.trim();
+        if !pid.is_empty() {
+            kill_args.push(pid.to_string());
+            found = true;
+        }
+    }
+
+    if found {
+        debug!("Killing Chrome processes for {}: {:?}", dir_str, &kill_args[1..]);
+        let _ = std::process::Command::new("kill").args(&kill_args).status();
+    }
+}
+
+/// Kill ALL Chrome processes started by this depfused instance.
+/// Safe to call from signal handlers or panic hooks.
+pub fn kill_all_chrome() {
+    let dirs = match CHROME_TEMP_DIRS.lock() {
+        Ok(dirs) => dirs.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    };
+
+    for dir in &dirs {
+        kill_chrome_for_dir(dir);
+    }
+
+    // Fallback: kill any Chrome whose user-data-dir matches our process ID pattern.
+    // This catches cases where temp dirs were cleaned up before Chrome died.
+    let pattern = format!("depfused-browser-{}-", std::process::id());
+    let _ = std::process::Command::new("pkill")
+        .args(["-9", "-f", &pattern])
+        .status();
+}
 
 /// Browser-based network capture using Chrome DevTools Protocol.
 pub struct BrowserCapture {
@@ -140,11 +211,18 @@ impl BrowserCapture {
             debug!("Failed to create temp dir {:?}: {}", temp_dir, e);
         }
 
-        // Store temp_dir for cleanup later
-        let temp_dir_for_cleanup = temp_dir.clone();
+        // Register temp dir so signal handler can find & kill Chrome
+        register_temp_dir(&temp_dir);
 
         // Launch browser (with auto-download fallback)
-        let (browser, mut handler) = self.launch_browser(&temp_dir).await?;
+        let (browser, mut handler) = match self.launch_browser(&temp_dir).await {
+            Ok(pair) => pair,
+            Err(e) => {
+                unregister_temp_dir(&temp_dir);
+                let _ = std::fs::remove_dir_all(&temp_dir);
+                return Err(e);
+            }
+        };
 
         // Spawn handler task
         let handler_task = tokio::spawn(async move {
@@ -165,18 +243,14 @@ impl BrowserCapture {
             }
         };
 
-        // Clean up browser
+        // Clean up: drop browser handle, abort handler, then SIGKILL Chrome processes
         drop(browser);
         handler_task.abort();
+        kill_chrome_for_dir(&temp_dir);
 
-        // Clean up temporary directory in background to not block
-        tokio::spawn(async move {
-            // Small delay to ensure browser has fully exited
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            if let Err(e) = std::fs::remove_dir_all(&temp_dir_for_cleanup) {
-                debug!("Failed to cleanup temp dir {:?}: {}", temp_dir_for_cleanup, e);
-            }
-        });
+        // Remove temp dir synchronously (small I/O, no need for background task)
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        unregister_temp_dir(&temp_dir);
 
         result
     }
@@ -198,7 +272,9 @@ impl BrowserCapture {
             debug!("Failed to create temp dir {:?}: {}", temp_dir, e);
         }
 
-        let temp_dir_for_cleanup = temp_dir.clone();
+        // Register temp dir so signal handler can find & kill Chrome
+        register_temp_dir(&temp_dir);
+
         let mut results = Vec::with_capacity(urls.len());
 
         // Launch browser
@@ -216,6 +292,8 @@ impl BrowserCapture {
                         ))),
                     ));
                 }
+                unregister_temp_dir(&temp_dir);
+                let _ = std::fs::remove_dir_all(&temp_dir);
                 return results;
             }
         };
@@ -240,6 +318,8 @@ impl BrowserCapture {
                 info!("Restarting browser after {} pages to free memory", pages_used);
                 current_browser.take(); // drops the old browser
                 current_handler_task.abort();
+                // Explicitly kill old Chrome before launching new one
+                kill_chrome_for_dir(&temp_dir);
 
                 match self.launch_browser(&temp_dir).await {
                     Ok((new_browser, mut new_handler)) => {
@@ -274,6 +354,9 @@ impl BrowserCapture {
                         // Kill the hung browser — Chrome may be spinning CPU
                         current_browser.take();
                         current_handler_task.abort();
+                        // Explicitly kill Chrome processes before restarting
+                        kill_chrome_for_dir(&temp_dir);
+
                         match self.launch_browser(&temp_dir).await {
                             Ok((new_browser, mut new_handler)) => {
                                 current_handler_task = tokio::spawn(async move {
@@ -305,16 +388,14 @@ impl BrowserCapture {
             }
         }
 
-        // Cleanup
+        // Cleanup: drop browser, abort handler, then SIGKILL Chrome
         drop(current_browser);
         current_handler_task.abort();
+        kill_chrome_for_dir(&temp_dir);
 
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            if let Err(e) = std::fs::remove_dir_all(&temp_dir_for_cleanup) {
-                debug!("Failed to cleanup temp dir {:?}: {}", temp_dir_for_cleanup, e);
-            }
-        });
+        // Remove temp dir synchronously
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        unregister_temp_dir(&temp_dir);
 
         results
     }
