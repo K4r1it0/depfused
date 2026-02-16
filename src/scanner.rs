@@ -174,6 +174,7 @@ impl Scanner {
 
                 tokio::spawn(async move {
                     let mut packages = HashSet::new();
+                    let mut workspace_names: HashSet<String> = HashSet::new();
 
                     // Skip very large files (>5MB) - they're rarely useful and slow to parse
                     const MAX_FILE_SIZE: usize = 5 * 1024 * 1024; // 5MB
@@ -187,15 +188,17 @@ impl Scanner {
                         if map_url.starts_with("data:") {
                             // Inline source map
                             if let Some(content) = SourceMapProber::decode_inline_sourcemap(map_url) {
-                                if let Ok(pkgs) = sourcemap_parser.parse(&content, map_url) {
+                                if let Ok((pkgs, ws)) = sourcemap_parser.parse(&content, map_url) {
                                     packages.extend(pkgs);
+                                    workspace_names.extend(ws);
                                 }
                             }
                         } else {
                             // Fetch external source map
                             if let Some(map_js) = fetcher.fetch_one(map_url, JsSource::Probe).await {
-                                if let Ok(pkgs) = sourcemap_parser.parse(&map_js.content, map_url) {
+                                if let Ok((pkgs, ws)) = sourcemap_parser.parse(&map_js.content, map_url) {
                                     packages.extend(pkgs);
+                                    workspace_names.extend(ws);
                                 }
                             }
                         }
@@ -220,8 +223,9 @@ impl Scanner {
 
                     if is_likely_bundled {
                         if let Some((map_url, content)) = sourcemap_prober.probe(&js_file.url).await {
-                            if let Ok(pkgs) = sourcemap_parser.parse(&content, &map_url) {
+                            if let Ok((pkgs, ws)) = sourcemap_parser.parse(&content, &map_url) {
                                 packages.extend(pkgs);
+                                workspace_names.extend(ws);
                             }
                         }
                     }
@@ -263,6 +267,16 @@ impl Scanner {
                         let deob_packages = deobfuscator
                             .extract_packages(&js_file.content, &js_file.url);
                         packages.extend(deob_packages);
+                    }
+
+                    // Filter workspace-only packages detected by source map analysis
+                    if !workspace_names.is_empty() {
+                        let before = packages.len();
+                        packages.retain(|p| !workspace_names.contains(&p.name));
+                        let filtered = before - packages.len();
+                        if filtered > 0 {
+                            debug!("Filtered {} workspace-only packages", filtered);
+                        }
                     }
 
                     packages

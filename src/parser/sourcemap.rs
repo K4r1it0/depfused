@@ -16,9 +16,41 @@ impl SourceMapParser {
     }
 
     /// Parse source map content and extract packages.
-    pub fn parse(&self, content: &str, source_url: &str) -> Result<Vec<Package>> {
+    ///
+    /// Returns `(packages, workspace_only_names)` where `workspace_only_names` contains
+    /// package names found in `packages/` paths but NOT in `node_modules/` paths.
+    /// These are monorepo workspace packages that should be suppressed.
+    pub fn parse(&self, content: &str, source_url: &str) -> Result<(Vec<Package>, HashSet<String>)> {
         let map: sourcemap::SourceMap = sourcemap::SourceMap::from_slice(content.as_bytes())
             .map_err(|e| crate::types::DepfusedError::SourceMapError(e.to_string()))?;
+
+        // Classification pass: identify workspace-only packages
+        let mut node_modules_names: HashSet<String> = HashSet::new();
+        let mut workspace_names: HashSet<String> = HashSet::new();
+
+        for source in map.sources() {
+            let path = source
+                .strip_prefix("webpack:///")
+                .or_else(|| source.strip_prefix("webpack://"))
+                .unwrap_or(source);
+
+            if let Some(idx) = path.find("node_modules/") {
+                let after = &path[idx + "node_modules/".len()..];
+                if let Some(name) = self.extract_package_from_path_segment(after) {
+                    node_modules_names.insert(name);
+                }
+            } else if let Some(idx) = path.find("packages/") {
+                let after = &path[idx + "packages/".len()..];
+                if let Some(name) = self.extract_package_from_path_segment(after) {
+                    workspace_names.insert(name);
+                }
+            }
+        }
+
+        let workspace_only: HashSet<String> = workspace_names
+            .difference(&node_modules_names)
+            .cloned()
+            .collect();
 
         let mut packages = HashSet::new();
 
@@ -37,14 +69,20 @@ impl SourceMapParser {
             }
         }
 
-        let result: Vec<Package> = packages.into_iter().collect();
+        // Filter workspace-only packages
+        let result: Vec<Package> = packages
+            .into_iter()
+            .filter(|p| !workspace_only.contains(&p.name))
+            .collect();
+
         debug!(
-            "Extracted {} packages from source map: {}",
+            "Extracted {} packages from source map (filtered {} workspace-only): {}",
             result.len(),
+            workspace_only.len(),
             source_url
         );
 
-        Ok(result)
+        Ok((result, workspace_only))
     }
 
     /// Extract package names from a source path.
@@ -245,12 +283,122 @@ mod tests {
             "names": []
         }"#;
 
-        let packages = parser.parse(sourcemap_json, "bundle.js.map").unwrap();
+        let (packages, workspace) = parser.parse(sourcemap_json, "bundle.js.map").unwrap();
         let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
 
         assert!(names.contains(&"lodash"));
         assert!(names.contains(&"@company/utils"));
-        // src/app.js should not be extracted (not a package)
         assert_eq!(names.len(), 2);
+        assert!(workspace.is_empty());
+    }
+
+    #[test]
+    fn test_workspace_only_suppressed() {
+        let parser = SourceMapParser::new();
+        let sourcemap_json = r#"{
+            "version": 3,
+            "sources": [
+                "webpack:///packages/my-private-lib/src/index.js",
+                "webpack:///node_modules/lodash/index.js"
+            ],
+            "mappings": "AAAA",
+            "names": []
+        }"#;
+
+        let (packages, workspace) = parser.parse(sourcemap_json, "bundle.js.map").unwrap();
+        let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
+
+        assert!(names.contains(&"lodash"));
+        assert!(!names.contains(&"my-private-lib"));
+        assert!(workspace.contains("my-private-lib"));
+    }
+
+    #[test]
+    fn test_package_in_both_kept() {
+        let parser = SourceMapParser::new();
+        let sourcemap_json = r#"{
+            "version": 3,
+            "sources": [
+                "webpack:///packages/shared-utils/src/index.js",
+                "webpack:///node_modules/shared-utils/dist/index.js"
+            ],
+            "mappings": "AAAA",
+            "names": []
+        }"#;
+
+        let (packages, workspace) = parser.parse(sourcemap_json, "bundle.js.map").unwrap();
+        let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
+
+        assert!(names.contains(&"shared-utils"));
+        assert!(!workspace.contains("shared-utils"));
+    }
+
+    #[test]
+    fn test_node_modules_only_kept() {
+        let parser = SourceMapParser::new();
+        let sourcemap_json = r#"{
+            "version": 3,
+            "sources": [
+                "webpack:///node_modules/lodash/index.js",
+                "webpack:///node_modules/react/index.js"
+            ],
+            "mappings": "AAAA",
+            "names": []
+        }"#;
+
+        let (packages, workspace) = parser.parse(sourcemap_json, "bundle.js.map").unwrap();
+        let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
+
+        assert!(names.contains(&"lodash"));
+        assert!(names.contains(&"react"));
+        assert!(workspace.is_empty());
+    }
+
+    #[test]
+    fn test_sources_content_workspace_filtered() {
+        let parser = SourceMapParser::new();
+        // Source map where my-private-lib appears in packages/ path AND is require'd in sourcesContent
+        let sourcemap_json = r#"{
+            "version": 3,
+            "sources": [
+                "webpack:///packages/my-private-lib/src/index.js",
+                "webpack:///node_modules/lodash/index.js"
+            ],
+            "sourcesContent": [
+                "const utils = require('my-private-lib');\nmodule.exports = utils;",
+                "module.exports = {};"
+            ],
+            "mappings": "AAAA",
+            "names": []
+        }"#;
+
+        let (packages, workspace) = parser.parse(sourcemap_json, "bundle.js.map").unwrap();
+        let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
+
+        assert!(names.contains(&"lodash"));
+        // my-private-lib should be filtered from both sources path AND sourcesContent extraction
+        assert!(!names.contains(&"my-private-lib"));
+        assert!(workspace.contains("my-private-lib"));
+    }
+
+    #[test]
+    fn test_empty_workspace_no_change() {
+        let parser = SourceMapParser::new();
+        let sourcemap_json = r#"{
+            "version": 3,
+            "sources": [
+                "webpack:///node_modules/lodash/index.js",
+                "webpack:///src/app.js",
+                "webpack:///src/utils/helpers.js"
+            ],
+            "mappings": "AAAA",
+            "names": []
+        }"#;
+
+        let (packages, workspace) = parser.parse(sourcemap_json, "bundle.js.map").unwrap();
+        let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
+
+        assert!(names.contains(&"lodash"));
+        assert!(workspace.is_empty());
     }
 }
