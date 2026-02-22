@@ -1,6 +1,6 @@
 //! AST-based JavaScript parser using oxc_parser.
 
-use crate::parser::normalize_package_name;
+use crate::parser::{filters, normalize_package_name};
 use crate::types::{Confidence, ExtractionMethod, Package, Result};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
@@ -58,7 +58,11 @@ impl AstParser {
         let string_packages = self.extract_from_strings(content, source_url);
         visitor.packages.extend(string_packages);
 
-        let packages: Vec<Package> = visitor.packages.into_iter().collect();
+        let packages: Vec<Package> = visitor
+            .packages
+            .into_iter()
+            .filter(|p| !filters::should_filter_package(&p.name, Some(content), Some(source_url)))
+            .collect();
         debug!(
             "Extracted {} packages from AST: {}",
             packages.len(),

@@ -1,6 +1,6 @@
 //! Bundler-specific parsers for Vite, Parcel, Turbopack, esbuild, and others.
 
-use crate::parser::normalize_package_name;
+use crate::parser::{filters, normalize_package_name};
 use crate::types::{Confidence, ExtractionMethod, Package};
 use regex::Regex;
 use std::collections::HashSet;
@@ -206,7 +206,10 @@ impl BundlerParser {
         self.extract_swc_packages(content, source_url, &mut packages);
         self.extract_minified_packages(content, source_url, &mut packages);
 
-        let result: Vec<Package> = packages.into_iter().collect();
+        let result: Vec<Package> = packages
+            .into_iter()
+            .filter(|p| !filters::should_filter_package(&p.name, Some(content), Some(source_url)))
+            .collect();
         if !result.is_empty() {
             debug!(
                 "Extracted {} packages from bundler patterns: {}",
